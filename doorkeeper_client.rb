@@ -81,7 +81,8 @@ class DoorkeeperClient < Sinatra::Base
   end
 
   def client
-    public_send("#{session[:client]}_client")
+    # public_send("#{session[:client]}_client")
+    confidential_client
   end
 
   def public_client
@@ -153,22 +154,28 @@ class DoorkeeperClient < Sinatra::Base
   end
 
   get '/callback' do
+    puts "CALLBACK ENDPOINT BEING CALLED ***********************************"
+
     if params[:error]
       erb :callback_error, layout: !request.xhr?
     else
       unless state_matches?(state, params[:state])
+        puts "CALLBACK ENDPOINT STATE MATCHES ***********************************"
         redirect '/'
         return
       end
 
       new_token =
         client
-        .auth_code
-        .get_token(
-          params[:code],
-          redirect_uri: app.confidential_client_redirect_uri,
-          code_verifier: code_verifier
-        )
+          .auth_code
+          .get_token(
+            params[:code],
+            redirect_uri: app.confidential_client_redirect_uri,
+            code_verifier: code_verifier
+          )
+
+      puts "TOKEN #{new_token} ***********************************"
+      puts "ACCESS TOKEN #{new_token.token} ***********************************"
 
       session[:access_token]  = new_token.token
       session[:refresh_token] = new_token.refresh_token
@@ -190,11 +197,29 @@ class DoorkeeperClient < Sinatra::Base
   get '/explore/:api' do
     raise 'Please call a valid endpoint' unless params[:api]
 
+    puts "API #{params[:api]} ***********************************"
+
+    puts "OAuth2::AccessToken #{access_token} ***********************************"
+    puts "access_token #{session[:access_token]} ***********************************"
+
+    # puts "RESPONSE #{access_token.get("/api/v1/me.json")} ***********************************"
+
     begin
       response = access_token.get("/api/v1/#{params[:api]}")
       @json = JSON.parse(response.body)
       erb :explore, layout: !request.xhr?
-    rescue OAuth2::Error => _e
+    rescue OAuth2::Error => e
+      erb :error, layout: !request.xhr?
+    end
+  end
+
+  get '/zapier' do
+    begin
+      response = access_token.get("/api/v1/zapier")
+      @json = JSON.parse(response.body)
+      puts "JSON #{@json} ***********************************"
+      erb :explore, layout: !request.xhr?
+    rescue OAuth2::Error => e
       erb :error, layout: !request.xhr?
     end
   end
